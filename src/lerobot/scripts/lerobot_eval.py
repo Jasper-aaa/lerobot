@@ -88,7 +88,7 @@ from lerobot.utils.utils import (
     init_logging,
     inside_slurm,
 )
-
+from collections import deque
 
 def rollout(
     env: gym.vector.VectorEnv,
@@ -98,6 +98,8 @@ def rollout(
     seeds: list[int] | None = None,
     return_observations: bool = False,
     render_callback: Callable[[gym.vector.VectorEnv], None] | None = None,
+    use_history: bool = False,
+    history_len: int = 0,
 ) -> dict:
     """Run a batched policy rollout once through a batch of environments.
 
@@ -127,6 +129,8 @@ def rollout(
             are returned optionally because they typically take more memory to cache. Defaults to False.
         render_callback: Optional rendering callback to be used after the environments are reset, and after
             every step.
+        use_history: Whether use history in evaluation
+        history_len: int = 0,
     Returns:
         The dictionary described above.
     """
@@ -144,6 +148,9 @@ def rollout(
     all_successes = []
     all_dones = []
 
+    # Yifan: allow history
+    obs_history_image = deque(maxlen=history_len)
+    obs_history_image2 = deque(maxlen=history_len)
     step = 0
     # Keep track of which environments are done.
     done = np.array([False] * env.num_envs)
@@ -161,10 +168,21 @@ def rollout(
         if return_observations:
             all_observations.append(deepcopy(observation))
 
+        # Yifan: allow history
+        # Yifan: 暂时写死，先添加一帧输入看看效果
+
         # Infer "task" from attributes of environments.
         # TODO: works with SyncVectorEnv but not AsyncVectorEnv
         observation = add_envs_task(env, observation)
         observation = preprocessor(observation)
+        if use_history:
+            # observation['observation.images.his_image' ]= obs_history_image[-history_len:] if len(obs_history_image) > 0 else deepcopy(observation['observation.images.image'])
+            # observation['observation.images.his_image2']= obs_history_image2[-history_len:] if len(obs_history_image2) > 0 else deepcopy(observation['observation.images.image2'])
+            observation['observation.images.his_image' ]= obs_history_image if len(obs_history_image) > 0 else deepcopy(observation['observation.images.image'])
+            observation['observation.images.his_image2']= obs_history_image2 if len(obs_history_image2) > 0 else deepcopy(observation['observation.images.image2'])
+            obs_history_image.append(deepcopy(observation['observation.images.image']))
+            obs_history_image2.append(deepcopy(observation['observation.images.image2']))
+
         with torch.inference_mode():
             action = policy.select_action(observation)
         action = postprocessor(action)
@@ -239,6 +257,8 @@ def eval_policy(
     videos_dir: Path | None = None,
     return_episode_data: bool = False,
     start_seed: int | None = None,
+    use_history: bool =False,
+    history_len: int = 0,
 ) -> dict:
     """
     Args:
@@ -317,6 +337,8 @@ def eval_policy(
             seeds=list(seeds) if seeds else None,
             return_observations=return_episode_data,
             render_callback=render_frame if max_episodes_rendered > 0 else None,
+            use_history=use_history,
+            history_len=history_len,
         )
 
         # Figure out where in each rollout sequence the first done condition was encountered (results after
@@ -514,6 +536,8 @@ def eval_main(cfg: EvalPipelineConfig):
             videos_dir=Path(cfg.output_dir) / "videos",
             start_seed=cfg.seed,
             max_parallel_tasks=cfg.env.max_parallel_tasks,
+            use_history=cfg.use_history,
+            history_len=cfg.history_len
         )
         print("Overall Aggregated Metrics:")
         print(info["overall"])
@@ -554,6 +578,8 @@ def eval_one(
     videos_dir: Path | None,
     return_episode_data: bool,
     start_seed: int | None,
+    use_history: bool,
+    history_len: int,
 ) -> TaskMetrics:
     """Evaluates one task_id of one suite using the provided vec env."""
 
@@ -569,6 +595,8 @@ def eval_one(
         videos_dir=task_videos_dir,
         return_episode_data=return_episode_data,
         start_seed=start_seed,
+        use_history=use_history,
+        history_len=history_len
     )
 
     per_episode = task_result["per_episode"]
@@ -593,6 +621,8 @@ def run_one(
     videos_dir: Path | None,
     return_episode_data: bool,
     start_seed: int | None,
+    use_history: bool,
+    history_len: int,
 ):
     """
     Run eval_one for a single (task_group, task_id, env).
@@ -615,6 +645,8 @@ def run_one(
         videos_dir=task_videos_dir,
         return_episode_data=return_episode_data,
         start_seed=start_seed,
+        use_history=use_history,
+        history_len=history_len
     )
     # ensure we always provide video_paths key to simplify accumulation
     if max_episodes_rendered > 0:
@@ -634,6 +666,8 @@ def eval_policy_all(
     return_episode_data: bool = False,
     start_seed: int | None = None,
     max_parallel_tasks: int = 1,
+    use_history: bool =False,
+    history_len: int,
 ) -> dict:
     """
     Evaluate a nested `envs` dict: {task_group: {task_id: vec_env}}.
@@ -687,6 +721,8 @@ def eval_policy_all(
         videos_dir=videos_dir,
         return_episode_data=return_episode_data,
         start_seed=start_seed,
+        use_history=use_history,
+        history_len=history_len
     )
 
     if max_parallel_tasks <= 1:

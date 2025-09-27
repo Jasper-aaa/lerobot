@@ -204,7 +204,7 @@ def make_pre_post_processors(
                 pretrained_model_name_or_path=pretrained_path,
                 config_filename=kwargs.get(
                     "preprocessor_config_filename", f"{POLICY_PREPROCESSOR_DEFAULT_NAME}.json"
-                ),
+                ), 
                 overrides=kwargs.get("preprocessor_overrides", {}),
                 to_transition=batch_to_transition,
                 to_output=transition_to_batch,

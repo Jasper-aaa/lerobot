@@ -25,6 +25,9 @@ from lerobot.optim.schedulers import (
 @PreTrainedConfig.register_subclass("smolvla")
 @dataclass
 class SmolVLAConfig(PreTrainedConfig):
+    # Yifan: Multi-Frame Input
+    # n_history: int = 0 
+
     # Input / output structure.
     n_obs_steps: int = 1
     chunk_size: int = 50
@@ -83,7 +86,7 @@ class SmolVLAConfig(PreTrainedConfig):
     scheduler_decay_lr: float = 2.5e-6
 
     vlm_model_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"  # Select the VLM backbone.
-    load_vlm_weights: bool = False  # Set to True in case of training the expert from scratch. True when init from pretrained SmolVLA weights
+    load_vlm_weights: bool = True  # Set to True in case of training the expert from scratch. True when init from pretrained SmolVLA weights
 
     add_image_special_tokens: bool = False  # Whether to use special image tokens around image features.
 
@@ -100,6 +103,8 @@ class SmolVLAConfig(PreTrainedConfig):
 
     min_period: float = 4e-3  # sensitivity range for the timestep used in sine-cosine positional encoding
     max_period: float = 4.0
+
+
 
     def __post_init__(self):
         super().__post_init__()

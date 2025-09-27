@@ -34,6 +34,8 @@ class EvalPipelineConfig:
     output_dir: Path | None = None
     job_name: str | None = None
     seed: int | None = 1000
+    use_history: bool | None = False
+    history_len: int | None = 0
 
     def __post_init__(self):
         # HACK: We parse again the cli args here to get the pretrained path if there was one.

@@ -68,6 +68,8 @@ from lerobot.policies.utils import (
 from lerobot.utils.constants import ACTION, OBS_LANGUAGE_ATTENTION_MASK, OBS_LANGUAGE_TOKENS, OBS_STATE
 from lerobot.utils.utils import get_safe_dtype
 
+from collections import deque
+
 
 def create_sinusoidal_pos_embedding(
     time: torch.tensor, dimension: int, min_period: float, max_period: float, device="cpu"
@@ -350,12 +352,40 @@ class SmolVLAPolicy(PreTrainedPolicy):
         present_img_keys = [key for key in self.config.image_features if key in batch]
         missing_img_keys = [key for key in self.config.image_features if key not in batch]
 
+        # Yifan: for multi-frame input
+        # Increase here should be fine for processing the rest
+        if 'observation.images.his_image' in list(batch.keys()):
+            present_img_keys.append('observation.images.his_image')
+            present_img_keys.append('observation.images.his_image2')
+            his_keys = ['observation.images.his_image','observation.images.his_image2']
         if len(present_img_keys) == 0:
             raise ValueError(
                 f"All image features are missing from the batch. At least one expected. (batch: {batch.keys()}) (image_features:{self.config.image_features})"
             )
         # Preprocess image features present in the batch
         for key in present_img_keys:
+            # Yifan: adding multi histories
+            # if isinstance(batch[key],list):
+            # if (key == 'observation.images.his_image' or key == 'observation.images.his_image2') and isinstance(batch[key], list):
+            if (key in his_keys) and isinstance(batch[key], deque):
+                for img in batch[key]:
+                    img = img[:, -1, :, :, :] if img.ndim == 5 else img
+                    if self.config.resize_imgs_with_padding is not None:
+                        img = resize_with_pad(img, *self.config.resize_imgs_with_padding, pad_value=0)
+
+                    # Normalize from range [0,1] to [-1,1] as expacted by siglip
+                    img = img * 2.0 - 1.0
+
+                    bsize = img.shape[0]
+                    device = img.device
+                    if f"{key}_padding_mask" in batch:
+                        mask = batch[f"{key}_padding_mask"].bool()
+                    else:
+                        mask = torch.ones(bsize, dtype=torch.bool, device=device)
+                    images.append(img)
+                    img_masks.append(mask)
+                continue
+
             img = batch[key][:, -1, :, :, :] if batch[key].ndim == 5 else batch[key]
             if self.config.resize_imgs_with_padding is not None:
                 img = resize_with_pad(img, *self.config.resize_imgs_with_padding, pad_value=0)
